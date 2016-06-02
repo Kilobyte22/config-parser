@@ -16,11 +16,11 @@ server freenode {
     channel "#secret" mypassword;
     
     user MyAdmin {
-        permissions all;
+        allow all;
     }
 
     user ShittySpammer {
-        ignore all;
+        deny all;
     }
 }
 ```
