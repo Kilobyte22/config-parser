@@ -7,14 +7,14 @@ macro_rules! expect_token {
     ($state:expr) => {
         match next($state) {
             Some(t) => t,
-            None => return fail($state, ErrorType::UnexpectedEOF)
+            None => return fail($state, ErrorType::UnexpectedEOF, "token")
         }
     };
     ($state:expr, $ty:expr) => {
         match next($state) {
             Some(Token {token_type: $ty(..), ..} @ t) => t,
-            Some(t) => return Err(Error::new(state.last_token.line, state.last_token.col, ErrorType::Unexpected(t)))
-            None => return fail($state, ErrorType::UnexpectedEOF)
+            Some(t) => return fail($state, ErrorType::Unexpected(t), stringify!($ty)) 
+            None => return fail($state, ErrorType::UnexpectedEOF, stringify!($ty))
         }
     }
 }
@@ -75,7 +75,8 @@ fn parse_block(state: &mut ParseState, inner: bool, name: String, options: Vec<S
                 }
             },
             TokenType::CloseBrace if inner => break,
-            _ => return fail(state, ErrorType::Unexpected(tok.clone()))
+            TokenType::Semicolon => {}
+            _ => return fail(state, ErrorType::Unexpected(tok.clone()), if inner { "option or }" } else { "option" })
         }
     }
     Ok(ret)
@@ -104,12 +105,12 @@ fn parse_params(state: &mut ParseState) -> Result<Vec<String>> {
                             break;
                         } else {
                             println!("Errored params");
-                            return fail(state, ErrorType::Unexpected(t)) 
+                            return fail(state, ErrorType::Unexpected(t), "; or {") 
                         }
                     }
                 }
             },
-            None => return fail(&state, ErrorType::UnexpectedEOF)
+            None => return fail(&state, ErrorType::UnexpectedEOF, "}")
         }
     }
     println!("Exited params");
@@ -158,8 +159,8 @@ fn lookahead(state: &mut ParseState) -> Option<lexer::Token> {
     r
 }
 
-fn fail<T>(state: &ParseState, error_type: ErrorType) -> Result<T> {
-    Err(Error::from_state(state, error_type))
+fn fail<T>(state: &ParseState, error_type: ErrorType, expected: &'static str) -> Result<T> {
+    Err(Error::from_state(state, error_type, Some(expected)))
 }
 
 #[cfg(test)]

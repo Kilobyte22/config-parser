@@ -18,20 +18,22 @@ pub trait CodePos {
 pub struct Error {
     error_type: ErrorType,
     line: u32,
-    col: u16
+    col: u16,
+    expected: Option<&'static str>
 }
 
 impl Error {
-    pub fn new(line: u32, col: u16, etype: ErrorType) -> Error {
+    pub fn new(line: u32, col: u16, etype: ErrorType, expected: Option<&'static str>) -> Error {
         Error {
             error_type: etype,
             line: line,
-            col: col
+            col: col,
+            expected: expected
         }
     }
 
-    pub fn from_state<T> (pos: &T, etype: ErrorType) -> Error where T: CodePos {
+    pub fn from_state<T> (pos: &T, etype: ErrorType, expected: Option<&'static str>) -> Error where T: CodePos {
         let p = pos.location();
-        Error::new(p.0, p.1, etype)
+        Error::new(p.0, p.1, etype, expected)
     }
 }

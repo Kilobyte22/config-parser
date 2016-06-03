@@ -42,7 +42,8 @@ struct LexerState {
     mode: LexerMode,
     escaped: bool,
     tmp: String,
-    tokens: Vec<Token>
+    tokens: Vec<Token>,
+    force_next: Option<char>
 }
 
 impl CodePos for LexerState {
@@ -77,7 +78,7 @@ fn token(state: &mut LexerState, t: TokenType) {
 }
 
 pub fn run(input: Box<Iterator<Item=char>>) -> Result<Vec<Token>> {
-    let mut state = LexerState { line: 1, col: 0, input: input, mode: LexerMode::None, escaped: false, tmp: String::new(), tokens: vec![]};
+    let mut state = LexerState { line: 1, col: 0, input: input, mode: LexerMode::None, escaped: false, tmp: String::new(), tokens: vec![], force_next: None};
     loop {
         let c = { next(&mut state) };
         let mode = state.mode.clone();
@@ -164,31 +165,119 @@ pub fn run(input: Box<Iterator<Item=char>>) -> Result<Vec<Token>> {
 }
 
 fn fail<T>(state: &LexerState, error_type: ErrorType) -> Result<T> {
-    Err(Error::from_state(state, error_type))
+    Err(Error::from_state(state, error_type, None))
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PreProcState {
+    Default,
+    LineComment,
+    MultiComment(u8)
+}
+
+fn next_char(state: &mut LexerState) -> Option<char> {
+    match state.force_next {
+        Some(c) => {
+            state.force_next = None;
+            Some(c)
+        },
+        None => state.input.next()
+    }
+}
+
+fn lookahead(state: &mut LexerState) -> Option<char> {
+    match state.force_next {
+        Some(c) => Some(c),
+        None => {
+            let c = state.input.next();
+            state.force_next = c;
+            c
+        }
+    }
 }
 
 fn next(state: &mut LexerState) -> Option<char> {
     let mut line = state.line;
     let mut col = state.col;
     let mut result: Option<char> = None;
-    for c in &mut state.input {
-        match c {
-            '\n' => {
+    let mut ps = PreProcState::Default;
+    loop {    
+        let c = match next_char(state) {
+            Some(c) => c,
+            None => break
+        };
+        match (c, ps) {
+            ('\n', PreProcState::Default) => {
                 line += 1;
                 col = 0;
                 result = Some(' ');
                 break;
             },
-            '\r' => {},
-            c if c.is_whitespace() => {
+            ('\r', PreProcState::Default) => {},
+            ('/', PreProcState::Default) => {
                 col += 1;
-                result = Some(c);
+                let n = lookahead(state);
+                match n {
+                    Some('/') => ps = PreProcState::LineComment,
+                    Some('*') => ps = PreProcState::MultiComment(1),
+                    _ => {
+                        result = Some(c);
+                        break;
+                    }
+                }
+            },
+            ('#', PreProcState::Default) => {
+                ps = PreProcState::LineComment;
+                col += 1;
+            },
+            (c, PreProcState::Default) if c.is_whitespace() => {
+                col += 1;
+                result = Some(' ');
                 break;
-            }
-            _ => {
+            },
+            (_, PreProcState::Default) => {
                 result = Some(c);
                 col += 1;
                 break;
+            },
+
+            ('\n', PreProcState::LineComment) => {
+                line += 1;
+                col = 0;
+                result = Some(' ');
+                break;
+            },
+            (_, PreProcState::LineComment) => {
+                col += 1;
+            },
+
+            ('\n', PreProcState::MultiComment(_)) => {
+                line += 1;
+                col = 0;
+            },
+            ('*', PreProcState::MultiComment(level)) => {
+                match lookahead(state) {
+                    Some('/') => {
+                        if level <= 1 {
+                            next(state).unwrap(); // pop the next char
+                            ps = PreProcState::Default
+                        } else {
+                            ps = PreProcState::MultiComment(level - 1)
+                        }
+                    },
+                    _ => {}
+                }
+            },
+            ('/', PreProcState::MultiComment(level)) => {
+                match lookahead(state) {
+                    Some('*') => {
+                        ps = PreProcState::MultiComment(level + 1);
+                    },
+                    _ => {}
+                }
+            },
+            (_, PreProcState::MultiComment(_)) => {
+                col += 1;
             }
         }
     }
@@ -251,10 +340,19 @@ mod test {
     }
 
     #[test]
+    fn ignores_comments() {
+        assert_eq!(
+            unwrap_tokens(run(Box::new("/* shit */
+                                       // crap
+                                       # shit".chars()))),
+            Ok(vec![]));
+    }
+
+    #[test]
     fn fails_on_unterminated_string() {
         assert_eq!(
             run(Box::new("\"yo dawg".chars())),
-            Err(Error::new(1, 8, ErrorType::UnexpectedEOF))
+            Err(Error::new(1, 8, ErrorType::UnexpectedEOF, None))
             );
     }
 }

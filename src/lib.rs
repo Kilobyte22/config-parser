@@ -16,14 +16,38 @@ pub fn parse<T, I>(iter: T) -> Result<ConfigBlock> where
     parser::run(Box::new(try!(lexer::run(Box::new(iter.into_iter()))).into_iter()))
 }
 
-pub fn parse_str(data: String) -> Result<ConfigBlock> {
-    parse(data.chars())
+pub fn parse_string(data: String) -> Result<ConfigBlock> {
+    parse(OwningChars::new(data))
 }
 
-pub fn parse_file(file: File) -> Result<ConfigBlock> {
-    let s = String::new();
-    file.read_to_string(&mut s);
-    parse(s.chars())
+pub fn parse_file(mut file: File) -> Result<ConfigBlock> {
+    let mut s = String::new();
+    file.read_to_string(&mut s).unwrap();
+    parse_string(s)
+}
+
+struct OwningChars { s: String, pos: usize }
+
+impl OwningChars {
+    pub fn new(s: String) -> OwningChars {
+        OwningChars { s: s, pos: 0 }
+    }
+}
+
+impl Iterator for OwningChars {
+    type Item = char;
+    fn next(&mut self) -> Option<char> {
+        if let Some(c) = self.s[self.pos..].chars().next() {
+            self.pos += c.len_utf8();
+            Some(c)
+        } else {
+            None
+        }
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.s.len() - self.pos;
+        ((len + 3) / 4, Some(len)) // see the Chars impl for detail
+    }
 }
 
 #[cfg(test)]
