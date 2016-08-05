@@ -1,3 +1,5 @@
+#![doc(html_root_url = "https://kilobyte22.de/doc/config_parser/")]
+
 pub mod config;
 pub mod error;
 pub mod lexer;
