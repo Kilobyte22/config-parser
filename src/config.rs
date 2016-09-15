@@ -41,6 +41,11 @@ impl ConfigBlock {
         &self.inner
     }
 
+    /// Returns the parameter count
+    pub fn len(&self) -> usize {
+        self.params.len()
+    }
+
     /// Returns a parameter. Panics if the parameter index is too high
     pub fn get(&self, i: usize) -> &str {
         &self.params[i]
